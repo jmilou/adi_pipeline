@@ -1,0 +1,7 @@
+.DS_Store
+*egg-info
+Icon
+*~
+__pycache__
+*.pyc
+
