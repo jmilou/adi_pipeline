@@ -12,20 +12,21 @@ import scipy.ndimage.interpolation
 import numpy as np
 from scipy.signal import convolve2d
 import radial_data as rd
+from scipy.stats import trim_mean
 #import pyfits as pf
 #from sklearn.decomposition import PCA
 
-def collapseCube(cube,cleanMean=1.,mask=None):
+def collapseCube(cube,trim=0.5,mask=None):
     """
-    Collapse a cube using the median or the (cleaned) mean.
+    Collapse a cube using the median or a trimmed mean.
     Input:
         - cube: a cube of images
-        - cleanMean: if 1 (default value), it subtracts the median. Otherwise expects
-                     a value between 0 and 1 corresponding to the fraction of frames
-                     to remove on both sides (lower side and upper side) before 
+        - trim: The collaspe along the cube 3rd dimension is a trimmed mean. It expects
+                     a value between 0 (mean) and 0.5 (median) corresponding to the 
+                     fraction of frames to remove on both sides (lower side and upper side) before 
                      computing the mean of the cube along the axis 0. For 
-                     cleanMean=0, this is equivalent to the mean, for cleanMean=1.
-                     this is equivalent to the median
+                     trim=0.1, this removes 10% of the lowest and highest pixels
+                     along the third axis of the cube before collapsing the cube
         - mask: a 3d binary array with True for values to be discarded when collapsing
                 the cube
     Output:
@@ -35,48 +36,36 @@ def collapseCube(cube,cleanMean=1.,mask=None):
         cube = np.copy(cube)
         print('Applying a binary mask: True values are discarded')
         cube[mask] = np.nan
-    if cleanMean==1.:
+    if trim==0.5:
         image = np.nanmedian(cube,axis=0)
-    elif cleanMean==0.:
+    elif trim==0.:
         image =np.nanmean(cube,axis=0)
-    elif cleanMean>0. and cleanMean < 1.:
-        image=np.ndarray([cube.shape[1],cube.shape[2]])
-        for index,val in np.ndenumerate(image):
-            array_tmp = cube[:,index[0],index[1]]
-            array_tmp = array_tmp[np.isfinite(array_tmp)]
-            if len(array_tmp)==0:
-                image[index[0],index[1]]=np.nan
-            else:
-                low,up=np.percentile(array_tmp,[100*cleanMean/2.,100*(1.-cleanMean/2.)])
-                filtered = [e for e in array_tmp if low<e<up]
-                image[index[0],index[1]]=np.mean(filtered)
+    elif trim>0. and trim < 0.5:
+        image = trim_mean(cube, trim, axis=0)
     else:
         raise ValueError('The clean mean expects value between 0. (mean) \
-        and 1. (median), received {0:4.2f}'.format(cleanMean))
+        and 0.5 (median), received {0:4.2f}'.format(trim))
     return image
 
-def subtractMedian(cube,cleanMean=1.,mask=None):
+def subtractMedian(cube,trim=0.5,mask=None):
     """
     Subtracts the median or clean mean of a cube (first step of ADI)
     Input:
         - cube: a cube of images
-        - cleanMean: if 1 (default) it subtracts the median. Otherwise expects
-                     a value between 0 and 1 corresponding to the fraction of frames
-                     to remove on both sides (lower side and upper side) before 
+        - trim: if 0.5 (default value), it subtracts the median. Otherwise expects
+                     a value between 0 (mean) and 0.5 (median) corresponding to the 
+                     fraction of frames to remove on both sides (lower side and upper side) before 
                      computing the mean of the cube along the axis 0. For 
-                     cleanMean=0, this is equivalent to the mean, for cleanMean=1.
-                     this is equivalent to the median   
+                     trim=0.1, this removes 10% of the lowest and highest pixels
+                     along the third axis of the cube before collapsing the cube
         - mask: a 3d binary array with True for bad values to be replaced by nan
                 before computing the star signal
     Output:
         - residual cube after subtraction
     """
-    return cube - collapseCube(cube,cleanMean,mask=mask)
-#    cubeSubtracted = np.copy(cube)
-#    cubeSubtracted -= collapseCube(cube,cleanMean,mask=mask)
-#    return cubeSubtracted 
+    return cube - collapseCube(cube,trim=trim,mask=mask)
 
-def derotateCollapse(cube,parang,rotoff=0.,cleanMean=1.,inplace=True):
+def derotateCollapse(cube,parang,rotoff=0.,trim=0.5,inplace=False):
     """
     Derotates a cube of images according ot the parallactic angle (parang) 
     and collapses it using the median or clean mean of a cube (first step of ADI).
@@ -85,12 +74,12 @@ def derotateCollapse(cube,parang,rotoff=0.,cleanMean=1.,inplace=True):
     pixel.
     Input:
         - cube: a cube of images
-        - cleanMean: if 1 (default) it subtracts the median. Otherwise expects
-                     a value between 0 and 1 corresponding to the fraction of frames
-                     to remove on both sides (lower side and upper side) before 
+        - trim: The collaspe along the cube 3rd dimension is a trimmed mean. It expects
+                     a value between 0 (mean) and 0.5 (median) corresponding to the 
+                     fraction of frames to remove on both sides (lower side and upper side) before 
                      computing the mean of the cube along the axis 0. For 
-                     cleanMean=0, this is equivalent to the mean, for cleanMean=1.
-                     this is equivalent to the median   
+                     trim=0.1, this removes 10% of the lowest and highest pixels
+                     along the third axis of the cube before collapsing the cube
     Output:
         - collapsed image after derotation
     """
@@ -101,14 +90,14 @@ def derotateCollapse(cube,parang,rotoff=0.,cleanMean=1.,inplace=True):
         for i in range(nbFrames):
             cube[i,:,:] = scipy.ndimage.interpolation.rotate(\
                 cube[i,:,:],-(parang[i]-rotoff),reshape=False,order=1,prefilter=False)
-        return collapseCube(cube,cleanMean)
+        return collapseCube(cube,trim=trim)
     else:            
         cubeDerotated = np.ndarray(cube.shape)
         for i in range(nbFrames):
     #        cubeDerotated[i,:,:] = rot.frame_rotate(cube[i,:,:],-parang[i]+rotoff)
             cubeDerotated[i,:,:] = scipy.ndimage.interpolation.rotate(\
                 cube[i,:,:],-(parang[i]-rotoff),reshape=False,order=1,prefilter=False)
-        return collapseCube(cubeDerotated,cleanMean)
+        return collapseCube(cubeDerotated,trim=trim)
 
 def insertFakeDisc(cube,parang,discMap,rotoff=0.,psf=None,copy=True):
     """
