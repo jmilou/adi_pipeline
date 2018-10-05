@@ -4,8 +4,8 @@ Created on Mon Sep  7 12:12:01 2015
 
 @author: jmilli
 """
-import sys
-sys.path.append('/Users/jmilli/Dropbox/lib_py/image_utilities') # add path to our file
+#import sys
+#sys.path.append('/Users/jmilli/Dropbox/lib_py/image_utilities') # add path to our file
 # we no longer use the package rot because of the opencv issue
 #import rotation_images as rot
 import scipy.ndimage.interpolation
