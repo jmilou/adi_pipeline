@@ -32,7 +32,7 @@ def collapseCube(cube,trim=0.5,mask=None):
     Output:
         - collapsed image
     """
-    if mask != None:
+    if not mask is None:
         cube = np.copy(cube)
         print('Applying a binary mask: True values are discarded')
         cube[mask] = np.nan
@@ -65,6 +65,33 @@ def subtractMedian(cube,trim=0.5,mask=None):
     """
     return cube - collapseCube(cube,trim=trim,mask=mask)
 
+def derotate(cube,parang,rotoff=0.,inplace=False):
+    """
+    Derotates a cube of images according ot the parallactic angle (parang).
+    It uses scipy.ndimage.interpolation.rotate for derotation and therefore
+    expects a cube with an odd number of rows and columns, centered on the central 
+    pixel.
+    Input:
+        - cube: a cube of images
+    Output:
+        - derotated cube
+    """
+    nbFrames=cube.shape[0]
+    if len(parang) != nbFrames:
+        raise IndexError('The cube has {0:5d} frames and the parallactic angle array only {1:5d} elements'.format(nbFrames,len(parang)))
+    if inplace:
+        for i in range(nbFrames):
+            cube[i,:,:] = scipy.ndimage.interpolation.rotate(\
+                cube[i,:,:],-(parang[i]-rotoff),reshape=False,order=1,prefilter=False)
+        return cube
+    else:            
+        cubeDerotated = np.ndarray(cube.shape)
+        for i in range(nbFrames):
+    #        cubeDerotated[i,:,:] = rot.frame_rotate(cube[i,:,:],-parang[i]+rotoff)
+            cubeDerotated[i,:,:] = scipy.ndimage.interpolation.rotate(\
+                cube[i,:,:],-(parang[i]-rotoff),reshape=False,order=1,prefilter=False)
+        return cubeDerotated
+
 def derotateCollapse(cube,parang,rotoff=0.,trim=0.5,inplace=False):
     """
     Derotates a cube of images according ot the parallactic angle (parang) 
@@ -83,21 +110,8 @@ def derotateCollapse(cube,parang,rotoff=0.,trim=0.5,inplace=False):
     Output:
         - collapsed image after derotation
     """
-    nbFrames=cube.shape[0]
-    if len(parang) != nbFrames:
-        raise IndexError('The cube has {0:5d} frames and the parallactic angle array only {1:5d} elements'.format(nbFrames,len(parang)))
-    if inplace:
-        for i in range(nbFrames):
-            cube[i,:,:] = scipy.ndimage.interpolation.rotate(\
-                cube[i,:,:],-(parang[i]-rotoff),reshape=False,order=1,prefilter=False)
-        return collapseCube(cube,trim=trim)
-    else:            
-        cubeDerotated = np.ndarray(cube.shape)
-        for i in range(nbFrames):
-    #        cubeDerotated[i,:,:] = rot.frame_rotate(cube[i,:,:],-parang[i]+rotoff)
-            cubeDerotated[i,:,:] = scipy.ndimage.interpolation.rotate(\
-                cube[i,:,:],-(parang[i]-rotoff),reshape=False,order=1,prefilter=False)
-        return collapseCube(cubeDerotated,trim=trim)
+    cubeDerotated = derotate(cube,parang,rotoff=rotoff,inplace=inplace)
+    return collapseCube(cubeDerotated,trim=trim)
 
 def insertFakeDisc(cube,parang,discMap,rotoff=0.,psf=None,copy=True):
     """
@@ -156,7 +170,7 @@ def flatten_cube(cube):
         cube_flattened[i,:,:] = flatten_image(cube[i,:,:])
     return cube_flattened
 
-def simple_reference_subtraction(science_cube,reference_cube,mask):
+def simple_reference_subtraction(science_cube,reference_cube,mask,verbose=False):
     """
     Given a science cube, a reference cube and a mask, the function finds 
     the best scaling to apply to the reference frames to minimize the residuals
@@ -167,10 +181,14 @@ def simple_reference_subtraction(science_cube,reference_cube,mask):
         print('The number of references is different from the number of science frames. Returning')
         return
     subtracted_cube = np.ndarray(science_cube.shape)
+    coeffs = np.ndarray((nframes))
     for i in range(nframes):
         tmp = reference_cube[i,:,:]*mask
-        coeff = np.sum(science_cube[i,:,:]*tmp)/np.sum(tmp**2)
-        subtracted_cube[i,:,:] = science_cube[i,:,:]-coeff*reference_cube[i,:,:]
+        coeffs[i] = np.sum(science_cube[i,:,:]*tmp)/np.sum(tmp**2)
+        subtracted_cube[i,:,:] = science_cube[i,:,:]-coeffs[i]*reference_cube[i,:,:]
+    if verbose:
+        print('The scaling factors were:')
+        print(coeffs)
     return subtracted_cube
 
 
